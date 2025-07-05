@@ -77,16 +77,38 @@ export async function POST(request: NextRequest) {
 
     for (const link of links) {
       try {
-        // Por enquanto, vamos simular o processamento do link
-        // TODO: Implementar Edge Function para processar links da Amazon
+        // Processar link da Amazon
+        const response = await fetch(`${request.nextUrl.origin}/api/process-amazon-link`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url: link }),
+        })
+
+        let productData
+        if (response.ok) {
+          const result = await response.json()
+          productData = result.data
+        } else {
+          // Fallback se o processamento falhar
+          productData = {
+            title: `Produto da Amazon - ${Math.random().toString(36).substring(7)}`,
+            description: 'Produto processado automaticamente',
+            image_url: 'https://via.placeholder.com/300x300?text=Produto',
+            price: Math.floor(Math.random() * 1000) + 50,
+            affiliate_url: link
+          }
+        }
+
         const processedItem = {
           list_id: list.id,
-          title: `Produto da Amazon - ${Math.random().toString(36).substring(7)}`,
-          description: 'Produto processado automaticamente',
-          image_url: 'https://via.placeholder.com/300x300?text=Produto',
-          price: Math.floor(Math.random() * 1000) + 50,
+          title: productData.title,
+          description: productData.description,
+          image_url: productData.image_url,
+          price: productData.price,
           amazon_url: link,
-          affiliate_url: link, // TODO: Converter para link de afiliado
+          affiliate_url: productData.affiliate_url,
           is_purchased: false
         }
 

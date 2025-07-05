@@ -27,19 +27,30 @@ interface List {
   items: Item[]
 }
 
-export default function ListPage({ params }: { params: { token: string } }) {
+export default function ListPage({ params }: { params: Promise<{ token: string }> }) {
   const [list, setList] = useState<List | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [token, setToken] = useState<string>('')
 
   useEffect(() => {
-    fetchList()
-  }, [params.token])
+    const getParams = async () => {
+      const resolvedParams = await params
+      setToken(resolvedParams.token)
+    }
+    getParams()
+  }, [params])
+
+  useEffect(() => {
+    if (token) {
+      fetchList()
+    }
+  }, [token])
 
   const fetchList = async () => {
     try {
-      const response = await fetch(`/api/list/${params.token}`)
+      const response = await fetch(`/api/list/${token}`)
       const data = await response.json()
 
       if (!response.ok) {

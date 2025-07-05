@@ -31,19 +31,30 @@ interface List {
   items: Item[]
 }
 
-export default function AdminListView({ params }: { params: { id: string } }) {
+export default function AdminListView({ params }: { params: Promise<{ id: string }> }) {
   const [list, setList] = useState<List | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [listId, setListId] = useState<string>('')
   const router = useRouter()
 
   useEffect(() => {
-    fetchList()
-  }, [params.id])
+    const getParams = async () => {
+      const resolvedParams = await params
+      setListId(resolvedParams.id)
+    }
+    getParams()
+  }, [params])
+
+  useEffect(() => {
+    if (listId) {
+      fetchList()
+    }
+  }, [listId])
 
   const fetchList = async () => {
     try {
-      const response = await fetch(`/api/admin/list/${params.id}`)
+      const response = await fetch(`/api/admin/list/${listId}`)
       const data = await response.json()
 
       if (!response.ok) {

@@ -4,8 +4,11 @@ import CryptoJS from 'crypto-js'
 export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json()
+    
+    console.log('Processando URL:', url)
 
     if (!url || !url.includes('amazon')) {
+      console.log('URL inválida:', url)
       return NextResponse.json(
         { error: 'URL da Amazon inválida' },
         { status: 400 }
@@ -13,6 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const productData = await extractProductData(url)
+    console.log('Dados extraídos:', productData)
 
     return NextResponse.json({
       success: true,
@@ -30,18 +34,53 @@ export async function POST(request: NextRequest) {
 
 async function extractProductData(url: string) {
   try {
+    console.log('Iniciando extração para URL:', url)
+    
     // Extrair ASIN da URL da Amazon
     const asin = extractASIN(url)
+    console.log('ASIN extraído:', asin)
     
     if (!asin) {
-      throw new Error('Não foi possível extrair o ASIN da URL')
+      console.log('ASIN não encontrado, usando fallback')
+      return {
+        title: 'Produto da Amazon',
+        price: 'Preço não disponível',
+        image_url: 'https://via.placeholder.com/400x400?text=Produto',
+        description: 'Produto processado automaticamente',
+        affiliate_url: url
+      }
+    }
+
+    // Verificar se as credenciais estão configuradas
+    const accessKey = process.env.AMAZON_ACCESS_KEY
+    const secretKey = process.env.AMAZON_SECRET_KEY
+    const partnerTag = process.env.AMAZON_PARTNER_TAG
+    
+    console.log('Credenciais configuradas:', {
+      accessKey: accessKey ? 'Sim' : 'Não',
+      secretKey: secretKey ? 'Sim' : 'Não', 
+      partnerTag: partnerTag ? 'Sim' : 'Não'
+    })
+
+    if (!accessKey || !secretKey || !partnerTag) {
+      console.log('Credenciais não configuradas, usando fallback')
+      return {
+        title: 'Produto da Amazon',
+        price: 'Preço não disponível',
+        image_url: 'https://via.placeholder.com/400x400?text=Produto',
+        description: 'Produto processado automaticamente',
+        affiliate_url: url
+      }
     }
 
     // Fazer requisição para a API da Amazon
+    console.log('Chamando API da Amazon...')
     const productData = await callAmazonAPI(asin)
+    console.log('Dados da API:', productData)
 
     // Gerar link de afiliado
-    const affiliateUrl = generateAffiliateUrl(url, process.env.AMAZON_PARTNER_TAG || '')
+    const affiliateUrl = generateAffiliateUrl(url, partnerTag)
+    console.log('Link de afiliado gerado:', affiliateUrl)
 
     return {
       title: productData.title,

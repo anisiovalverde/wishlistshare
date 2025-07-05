@@ -64,7 +64,7 @@ async function extractProductData(url: string) {
 
         return {
           title: productData.title,
-          price: productData.price,
+          price: parseFloat(productData.price.replace(/[^\d.,]/g, '').replace(',', '.')) || 0,
           image_url: productData.imageUrl,
           description: productData.description,
           affiliate_url: affiliateUrl
@@ -93,7 +93,7 @@ async function extractProductData(url: string) {
     console.error('Erro na extração:', error)
     return {
       title: 'Produto da Amazon',
-      price: 'Preço não disponível',
+      price: 0,
       image_url: 'https://via.placeholder.com/400x400?text=Produto',
       description: 'Produto processado automaticamente',
       affiliate_url: url
@@ -255,8 +255,8 @@ function generateFallbackData(url: string, asin: string | null) {
     title += ` - ${asin}`
   }
   
-  // Gerar preço simulado
-  const price = `$${(Math.random() * 100 + 10).toFixed(2)}`
+  // Gerar preço simulado (número)
+  const price = Math.floor(Math.random() * 100 + 10)
   
   // Gerar imagem placeholder
   const imageUrl = `https://via.placeholder.com/400x400/2563eb/ffffff?text=${encodeURIComponent(title)}`

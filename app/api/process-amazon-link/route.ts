@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import * as cheerio from 'cheerio'
+import { AmazonPaapi } from 'amazon-paapi'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,103 +30,89 @@ export async function POST(request: NextRequest) {
 
 async function extractProductData(url: string) {
   try {
-    // Fazer requisição para a página da Amazon
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+    // Extrair ASIN da URL da Amazon
+    const asin = extractASIN(url)
+    
+    if (!asin) {
+      throw new Error('Não foi possível extrair o ASIN da URL')
+    }
+
+    // Configurar Amazon PAAPI
+    const commonParams = {
+      AccessKey: process.env.AMAZON_ACCESS_KEY || '',
+      SecretKey: process.env.AMAZON_SECRET_KEY || '',
+      PartnerTag: process.env.AMAZON_PARTNER_TAG || '',
+      PartnerType: 'Associates',
+      Marketplace: 'www.amazon.com'
+    }
+
+    // Buscar produto por ASIN
+    const searchResult = await AmazonPaapi.SearchItems({
+      ...commonParams,
+      Keywords: asin,
+      SearchIndex: 'All',
+      ItemCount: 1
     })
 
-    if (!response.ok) {
-      throw new Error('Falha ao acessar página da Amazon')
+    if (!searchResult.ItemsResult || searchResult.ItemsResult.Items.length === 0) {
+      throw new Error('Produto não encontrado')
     }
 
-    const html = await response.text()
-    const $ = cheerio.load(html)
-
-    // Extrair título do produto
-    let title = ''
-    const titleSelectors = [
-      '#productTitle',
-      'h1.a-size-large',
-      'h1.a-size-medium',
-      '.a-size-large.a-spacing-none',
-      'h1'
-    ]
+    const item = searchResult.ItemsResult.Items[0]
     
-    for (const selector of titleSelectors) {
-      const element = $(selector).first()
-      if (element.length > 0) {
-        title = element.text().trim()
-        break
-      }
-    }
+    // Extrair dados do produto
+    const title = item.ItemInfo?.Title?.DisplayValue || 'Produto da Amazon'
+    const price = item.Offers?.Listings?.[0]?.Price?.DisplayAmount || 'Preço não disponível'
+    const imageUrl = item.Images?.Primary?.Large?.URL || 'https://via.placeholder.com/400x400?text=Produto'
+    const description = item.ItemInfo?.Features?.DisplayValues?.[0] || title
 
-    // Extrair preço
-    let price = 0
-    const priceSelectors = [
-      '.a-price-whole',
-      '.a-price .a-offscreen',
-      '.a-price-current .a-offscreen',
-      '.a-price-current .a-price-whole',
-      '[data-a-color="price"] .a-offscreen'
-    ]
-    
-    for (const selector of priceSelectors) {
-      const element = $(selector).first()
-      if (element.length > 0) {
-        const priceText = element.text().trim()
-        // Remover símbolos e converter para número
-        const priceNumber = parseFloat(priceText.replace(/[^\d.,]/g, '').replace(',', '.'))
-        if (!isNaN(priceNumber)) {
-          price = priceNumber
-          break
-        }
-      }
-    }
-
-    // Extrair imagem
-    let imageUrl = ''
-    const imageSelectors = [
-      '#landingImage',
-      '#imgBlkFront',
-      '.a-dynamic-image',
-      'img[data-old-hires]',
-      'img[src*="images-na.ssl-amazon"]'
-    ]
-    
-    for (const selector of imageSelectors) {
-      const element = $(selector).first()
-      if (element.length > 0) {
-        imageUrl = element.attr('src') || element.attr('data-old-hires') || ''
-        if (imageUrl) break
-      }
-    }
-
-    // Se não conseguiu extrair dados reais, usar fallback
-    if (!title) {
-      title = 'Produto da Amazon'
-    }
-    if (!imageUrl) {
-      imageUrl = 'https://via.placeholder.com/400x400?text=Produto'
-    }
+    // Gerar link de afiliado
+    const affiliateUrl = generateAffiliateUrl(url, process.env.AMAZON_PARTNER_TAG || '')
 
     return {
       title: title,
       price: price,
       image_url: imageUrl,
-      description: title,
-      affiliate_url: url
+      description: description,
+      affiliate_url: affiliateUrl
     }
 
   } catch (error) {
     console.error('Erro na extração:', error)
     return {
       title: 'Produto da Amazon',
-      price: 0,
+      price: 'Preço não disponível',
       image_url: 'https://via.placeholder.com/400x400?text=Produto',
       description: 'Produto processado automaticamente',
       affiliate_url: url
     }
   }
+}
+
+function extractASIN(url: string): string | null {
+  // Padrões comuns de URLs da Amazon
+  const patterns = [
+    /\/dp\/([A-Z0-9]{10})/,
+    /\/gp\/product\/([A-Z0-9]{10})/,
+    /\/ASIN\/([A-Z0-9]{10})/,
+    /\/ref=.*\/([A-Z0-9]{10})/
+  ]
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match) {
+      return match[1]
+    }
+  }
+
+  return null
+}
+
+function generateAffiliateUrl(originalUrl: string, partnerTag: string): string {
+  if (!partnerTag) return originalUrl
+
+  const url = new URL(originalUrl)
+  url.searchParams.set('tag', partnerTag)
+  
+  return url.toString()
 } 

@@ -111,14 +111,42 @@ async function callAmazonAPI(asin: string) {
     throw new Error('Credenciais da Amazon não configuradas')
   }
 
-  const endpoint = 'webservices.amazon.com'
+  // Tentar diferentes marketplaces
+  const marketplaces = [
+    { endpoint: 'webservices.amazon.com', region: 'us-east-1', marketplace: 'www.amazon.com' },
+    { endpoint: 'webservices.amazon.com.br', region: 'us-east-1', marketplace: 'www.amazon.com.br' },
+    { endpoint: 'webservices.amazon.co.uk', region: 'eu-west-1', marketplace: 'www.amazon.co.uk' }
+  ]
+
+  for (const marketplace of marketplaces) {
+    try {
+      console.log(`Tentando marketplace: ${marketplace.marketplace}`)
+      
+      const result = await tryMarketplace(asin, marketplace, accessKey, secretKey, partnerTag)
+      if (result) {
+        console.log(`Sucesso no marketplace: ${marketplace.marketplace}`)
+        return result
+      }
+    } catch (error) {
+      console.log(`Erro no marketplace ${marketplace.marketplace}:`, error instanceof Error ? error.message : 'Erro desconhecido')
+      continue
+    }
+  }
+
+  throw new Error('Produto não encontrado em nenhum marketplace')
+}
+
+async function tryMarketplace(asin: string, marketplace: any, accessKey: string, secretKey: string, partnerTag: string) {
+  const endpoint = marketplace.endpoint
   const uri = '/paapi5/getitems'
   const service = 'ProductAdvertisingAPI'
-  const region = 'us-east-1'
-  const method = 'POST'
+  const region = marketplace.region
   const payload = JSON.stringify({
     ItemIds: [asin],
-    Resources: ['ItemInfo.Title', 'Offers.Listings.Price', 'Images.Primary.Large']
+    Resources: ['ItemInfo.Title', 'Offers.Listings.Price', 'Images.Primary.Large'],
+    Marketplace: marketplace.marketplace,
+    PartnerTag: partnerTag,
+    PartnerType: 'Associates'
   })
 
   const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -161,11 +189,14 @@ async function callAmazonAPI(asin: string) {
     body: payload
   })
 
+  console.log(`Status da resposta para ${marketplace.marketplace}:`, response.status)
+
   if (!response.ok) {
     throw new Error(`Erro na API da Amazon: ${response.status}`)
   }
 
   const data = await response.json()
+  console.log(`Resposta da API para ${marketplace.marketplace}:`, JSON.stringify(data, null, 2))
 
   if (data.ItemsResult && data.ItemsResult.Items && data.ItemsResult.Items.length > 0) {
     const item = data.ItemsResult.Items[0]
@@ -176,27 +207,33 @@ async function callAmazonAPI(asin: string) {
       imageUrl: item.Images?.Primary?.Large?.URL || 'https://via.placeholder.com/400x400?text=Produto',
       description: item.ItemInfo?.Title?.DisplayValue || 'Produto da Amazon'
     }
-  } else {
-    throw new Error('Produto não encontrado na API')
   }
+
+  return null
 }
 
 function extractASIN(url: string): string | null {
+  console.log('Extraindo ASIN de:', url)
+  
   // Padrões comuns de URLs da Amazon
   const patterns = [
     /\/dp\/([A-Z0-9]{10})/,
     /\/gp\/product\/([A-Z0-9]{10})/,
     /\/ASIN\/([A-Z0-9]{10})/,
-    /\/ref=.*\/([A-Z0-9]{10})/
+    /\/ref=.*\/([A-Z0-9]{10})/,
+    /\/product\/([A-Z0-9]{10})/,
+    /\/d\/([A-Z0-9]{10})/
   ]
 
   for (const pattern of patterns) {
     const match = url.match(pattern)
     if (match) {
+      console.log('ASIN encontrado com padrão:', pattern, 'Resultado:', match[1])
       return match[1]
     }
   }
 
+  console.log('Nenhum ASIN encontrado')
   return null
 }
 
